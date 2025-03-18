@@ -52,7 +52,12 @@ The app follows the MVVM (Model-View-ViewModel) architecture pattern:
 
 ## Screenshots
 
-[Include screenshots here]
+[![image](https://github.com/user-attachments/assets/5b62050b-971c-48c5-9e36-624c0e9acf9e)
+![image](https://github.com/user-attachments/assets/2fa354ba-d7c4-4931-9d9e-a2e3bcb7747a)
+![image](https://github.com/user-attachments/assets/98de0bdc-a016-45ea-a55e-8814bbc89b22)
+
+
+]
 
 ## Future Improvements
 
