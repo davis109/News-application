@@ -10,7 +10,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -34,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.sebastiandavis.news_app.data.model.Article
@@ -52,6 +56,9 @@ fun HomeScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val userPreferences by viewModel.userPreferences.collectAsState()
+    val searchResults by viewModel.searchResults.collectAsState()
+    val currentSearchQuery by viewModel.searchQuery.collectAsState()
+    val searchState by viewModel.searchState.collectAsState()
     
     var selectedCategoryIndex by remember { mutableStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
@@ -61,6 +68,11 @@ fun HomeScreen(
         errorMessage?.let {
             snackbarHostState.showSnackbar(it)
         }
+    }
+    
+    // When the current search query changes, update the UI
+    LaunchedEffect(currentSearchQuery) {
+        searchQuery = currentSearchQuery
     }
     
     Scaffold(
@@ -85,13 +97,40 @@ fun HomeScreen(
                     .padding(16.dp),
                 label = { Text("Search news") },
                 trailingIcon = {
-                    IconButton(onClick = { viewModel.searchNews(searchQuery) }) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Search"
-                        )
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { 
+                            searchQuery = ""
+                            viewModel.searchNews("")
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = "Clear search"
+                            )
+                        }
+                    } else {
+                        IconButton(onClick = { 
+                            if (searchQuery.isNotBlank()) {
+                                viewModel.searchNews(searchQuery)
+                            }
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Search"
+                            )
+                        }
                     }
-                }
+                },
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Search
+                ),
+                keyboardActions = KeyboardActions(
+                    onSearch = {
+                        if (searchQuery.isNotBlank()) {
+                            viewModel.searchNews(searchQuery)
+                        }
+                    }
+                ),
+                singleLine = true
             )
             
             // Category tabs
@@ -125,39 +164,100 @@ fun HomeScreen(
             
             // News list
             Box(modifier = Modifier.fillMaxSize()) {
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                } else if (articles.isEmpty()) {
-                    Text(
-                        text = "No articles found",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp),
-                        textAlign = TextAlign.Center
-                    )
-                } else {
-                    val filteredArticles = if (selectedCategoryIndex == 0) {
-                        articles
-                    } else {
-                        articles.filter { it.category == categories[selectedCategoryIndex] }
+                when (searchState) {
+                    is NewsViewModel.SearchState.Searching -> {
+                        CircularProgressIndicator(
+                            modifier = Modifier.align(Alignment.Center)
+                        )
                     }
-                    
-                    LazyColumn(
-                        contentPadding = PaddingValues(vertical = 8.dp)
-                    ) {
-                        items(filteredArticles) { article ->
-                            ArticleItem(
-                                article = article,
-                                onArticleClick = {
-                                    viewModel.markArticleAsRead(it)
-                                    onArticleClick(it)
-                                },
-                                onBookmarkClick = {
-                                    viewModel.toggleSaveArticle(it)
-                                }
+                    is NewsViewModel.SearchState.Error -> {
+                        Text(
+                            text = (searchState as NewsViewModel.SearchState.Error).message,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    is NewsViewModel.SearchState.Results -> {
+                        val results = (searchState as NewsViewModel.SearchState.Results).articles
+                        if (results.isEmpty()) {
+                            Text(
+                                text = "No results found for \"$searchQuery\"",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp),
+                                textAlign = TextAlign.Center
                             )
+                        } else {
+                            Column {
+                                Text(
+                                    text = "Showing ${results.size} results for \"$searchQuery\"",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                
+                                LazyColumn(
+                                    contentPadding = PaddingValues(vertical = 8.dp)
+                                ) {
+                                    items(results) { article ->
+                                        ArticleItem(
+                                            article = article,
+                                            onArticleClick = {
+                                                viewModel.markArticleAsRead(it)
+                                                onArticleClick(it)
+                                            },
+                                            onBookmarkClick = {
+                                                viewModel.toggleSaveArticle(it)
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else -> {
+                        // Default state (Idle) - show regular content
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.align(Alignment.Center)
+                            )
+                        } else if (articles.isEmpty()) {
+                            Text(
+                                text = "No articles found",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp),
+                                textAlign = TextAlign.Center
+                            )
+                        } else {
+                            val filteredArticles = if (selectedCategoryIndex == 0) {
+                                articles
+                            } else {
+                                val categories = viewModel.availableCategories
+                                articles.filter { it.category == categories[selectedCategoryIndex] }
+                            }
+                            
+                            LazyColumn(
+                                contentPadding = PaddingValues(vertical = 8.dp)
+                            ) {
+                                items(filteredArticles) { article ->
+                                    ArticleItem(
+                                        article = article,
+                                        onArticleClick = {
+                                            viewModel.markArticleAsRead(it)
+                                            onArticleClick(it)
+                                        },
+                                        onBookmarkClick = {
+                                            viewModel.toggleSaveArticle(it)
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 }

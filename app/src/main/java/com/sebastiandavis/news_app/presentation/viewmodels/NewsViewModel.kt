@@ -41,6 +41,25 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     val savedArticles = newsRepository.getSavedArticles()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
     
+    // Search results
+    private val _searchResults = MutableStateFlow<List<Article>>(emptyList())
+    val searchResults: StateFlow<List<Article>> = _searchResults
+    
+    // Search query
+    private val _searchQuery = MutableStateFlow<String>("")
+    val searchQuery: StateFlow<String> = _searchQuery
+    
+    // Search state
+    sealed class SearchState {
+        object Idle : SearchState()
+        object Searching : SearchState()
+        data class Results(val articles: List<Article>) : SearchState()
+        data class Error(val message: String) : SearchState()
+    }
+    
+    private val _searchState = MutableStateFlow<SearchState>(SearchState.Idle)
+    val searchState: StateFlow<SearchState> = _searchState
+    
     // User preferences
     val userPreferences = userPreferencesRepository.getUserPreferences(currentUserId)
         .stateIn(viewModelScope, SharingStarted.Lazily, null)
@@ -103,16 +122,40 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     // Search news
     fun searchNews(query: String) {
         viewModelScope.launch {
+            if (query.isBlank()) {
+                _searchResults.value = emptyList()
+                _searchQuery.value = ""
+                _searchState.value = SearchState.Idle
+                return@launch
+            }
+            
             _isLoading.value = true
+            _searchQuery.value = query
+            _searchState.value = SearchState.Searching
+            
             try {
                 val result = newsRepository.searchNews(query)
                 if (result.isFailure) {
-                    _errorMessage.value = "Search failed: ${result.exceptionOrNull()?.message}"
+                    val errorMsg = "Search failed: ${result.exceptionOrNull()?.message ?: "Unknown error"}"
+                    _errorMessage.value = errorMsg
+                    _searchResults.value = emptyList()
+                    _searchState.value = SearchState.Error(errorMsg)
                 } else {
                     _errorMessage.value = null
+                    val articles = result.getOrNull() ?: emptyList()
+                    _searchResults.value = articles
+                    _searchState.value = SearchState.Results(articles)
+                    
+                    // Cache search results locally
+                    if (articles.isNotEmpty()) {
+                        newsRepository.cacheArticles(articles)
+                    }
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Search failed: ${e.message}"
+                val errorMsg = "Search failed: ${e.message ?: "Unknown error"}"
+                _errorMessage.value = errorMsg
+                _searchResults.value = emptyList()
+                _searchState.value = SearchState.Error(errorMsg)
             } finally {
                 _isLoading.value = false
             }

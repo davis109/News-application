@@ -72,4 +72,8 @@ class NewsRepository(private val articleDao: ArticleDao) {
     suspend fun markArticleAsRead(article: Article) {
         articleDao.updateReadStatus(article.url, true)
     }
+    
+    suspend fun cacheArticles(articles: List<Article>) {
+        articleDao.insertArticles(articles)
+    }
 } 
